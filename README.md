@@ -2,6 +2,8 @@
 
 `gcu` is a Go-first alternative to `npm-check-updates`. Run it in a module root to see which dependencies can be upgraded, choose the ones you want, and let it rewrite `go.mod`/`go.sum` for you.
 
+![gcu preview](images/gcu-preview.png)
+
 ## Highlights
 
 - Detect direct and optional transitive (`--all`) updates with a single command.
