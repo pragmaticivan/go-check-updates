@@ -1,24 +1,22 @@
-# go-check-updates (gcu)
+## go-check-updates (gcu)
 
-`gcu` is a Go module upgrade tool inspired by `npm-check-updates`. It helps you identify available updates for your Go dependencies and upgrade them easily.
+`gcu` is a Go-first alternative to `npm-check-updates`. Run it in a module root to see which dependencies can be upgraded, choose the ones you want, and let it rewrite `go.mod`/`go.sum` for you.
 
-## Features
+## Highlights
 
--   **List Updates**: Check for newer versions of your direct and indirect dependencies.
--   **Interactive Mode**: Select which packages to upgrade using a terminal UI.
--   **Upgrade**: Update all packages to their latest versions.
--   **Filter**: Filter packages by name.
--   **Cooldown**: Ignore versions published within the last N days.
--   **Formats**: Customize output for scripting or readability (`--format lines`, `--format group`, `--format time`).
--   **Transitive (optional)**: Include transitive dependency updates with `--all`.
+- Detect direct and optional transitive (`--all`) updates with a single command.
+- Interactive Bubble Tea UI for selective upgrades (`-i`).
+- Script-friendly `--format` options (`lines`, `group`, `time`).
+- Cooldown window to skip freshly published versions (`--cooldown 14`).
+- Works great in CI or locally; plain `gcu` is a dry run, `-u` applies changes.
 
-## Installation
+## Install
 
 ```bash
 go install github.com/pragmaticivan/go-check-updates/cmd/gcu@latest
 ```
 
-Or build from source:
+From source:
 
 ```bash
 git clone https://github.com/pragmaticivan/go-check-updates.git
@@ -26,112 +24,47 @@ cd go-check-updates
 go build -o gcu ./cmd/gcu
 ```
 
-## Usage
+## Quick start
 
-### Check for updates (Dry Run)
+| Task | Command | Notes |
+| --- | --- | --- |
+| Dry run (recommended) | `gcu` | Lists direct updates grouped by direct/indirect |
+| Upgrade everything | `gcu -u` | Applies updates, then runs `go mod tidy` |
+| Interactive picker | `gcu -i` | Use space to toggle, enter to confirm |
+| Filter names | `gcu --filter charm` | Accepts substring or regex via Go's `regexp` |
+| Include transitive deps | `gcu --all` | Adds modules pulled in indirectly |
+| Skip fresh releases | `gcu --cooldown 30` | Ignores versions published in last N days |
 
-Run `gcu` in the root of your project:
-
-```bash
-$ gcu
-Checking for updates...
-
-Available updates:
- github.com/charmbracelet/bubbletea  v0.23.1  →  v0.23.2
- github.com/spf13/cobra              v1.6.0   →  v1.6.1
-
-Run with -u to upgrade, or -i for interactive mode.
-```
-
-### Upgrade all packages
-
-Use the `-u` flag to upgrade all found updates:
+### Output formats
 
 ```bash
-$ gcu -u
-Checking for updates...
-Upgrading...
-Done.
+# Pipe-friendly
+gcu --format lines
+
+# Group major/minor/patch and show publish date
+gcu --format group,time
 ```
 
-### Interactive Mode
+Combine formats with commas to mix behaviors.
 
-Use the `-i` flag to select packages to upgrade:
+## Typical workflow
 
-```bash
-$ gcu -i
-```
-
-You will see a checklist:
-```
-Which packages would you like to update?
-
-  [x] github.com/charmbracelet/bubbletea v0.23.1 -> v0.23.2
-> [ ] github.com/spf13/cobra             v1.6.0  -> v1.6.1
-
-Press <space> to select, <enter> to update, <q> to quit.
-```
-
-### Filtering
-
-Check only specific packages:
-
-```bash
-$ gcu -f charm
-Checking for updates...
-
-Available updates:
- github.com/charmbracelet/bubbletea  v0.23.1  →  v0.23.2
-```
-
-### Include transitive dependencies
-
-By default, `gcu` shows updates for modules explicitly listed in `go.mod` (split into direct vs `// indirect`).
-To include transitive dependency updates too:
-
-```bash
-$ gcu --all
-```
-
-### Cooldown
-
-Ignore versions published in the last N days:
-
-```bash
-$ gcu --cooldown 30
-```
-
-### Output formatting
-
-Supported values: `group`, `lines`, `time` (comma-separated).
-
-- Pipe-friendly lines (prints only `module@version`):
-
-```bash
-$ gcu --format lines
-github.com/foo/bar@v1.2.3
-```
-
-- Group by update type (major/minor/patch):
-
-```bash
-$ gcu --format group
-```
-
-- Show publish time (date + days ago):
-
-```bash
-$ gcu --format time
-```
-
-- Combine formats:
-
-```bash
-$ gcu --format group,time
-```
+1. Run `gcu` to review upcoming upgrades.
+2. Re-run with `-i` or `-u` depending on how selective you need to be.
+3. Commit the updated `go.mod`/`go.sum` and run `go test ./...` (the GitHub Actions workflow does the same check).
 
 ## How it works
 
-1.  `gcu` runs `go list -m -u -json all` to detect available updates.
-2.  If `-u` is passed, it runs `go get [package]@[new_version]` for each update.
-3.  Finally, it runs `go mod tidy` to ensure `go.mod` and `go.sum` are clean.
+1. `gcu` shells out to `go list -m -u -json` to discover available versions.
+2. When upgrading, it executes `go get module@version` for each selection.
+3. A final `go mod tidy` keeps the module graph consistent.
+
+## Development
+
+```bash
+go test ./...
+```
+
+## License
+
+Licensed under the Apache License 2.0. See [LICENSE](LICENSE).
