@@ -31,6 +31,20 @@ type Module struct {
 	// FromGoMod indicates this module is explicitly listed in go.mod.
 	// It is populated by gcu (not by `go list`).
 	FromGoMod bool `json:"-"`
+
+	// VulnCurrent holds vulnerability counts for the current version
+	VulnCurrent VulnInfo `json:"-"`
+	// VulnUpdate holds vulnerability counts for the update version
+	VulnUpdate VulnInfo `json:"-"`
+}
+
+// VulnInfo contains vulnerability information for a module version
+type VulnInfo struct {
+	Low      int
+	Medium   int
+	High     int
+	Critical int
+	Total    int
 }
 
 // Options configures dependency discovery.

@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
+	"github.com/pragmaticivan/go-check-updates/internal/scanner"
 )
 
 func init() {
@@ -143,4 +144,85 @@ func FormatUpdate(path, vOld, vNew string, padPath int) string {
 		ColorArrow.Render("→"),
 		targetStyle.Render(vNew),
 	)
+}
+
+// FormatUpdateWithVulns formats a module update line with vulnerability information
+func FormatUpdateWithVulns(path, vOld, vNew string, padPath int, vulnCurrent, vulnUpdate scanner.VulnInfo, showVulns bool) string {
+	diff := GetDiffType(vOld, vNew)
+	targetStyle := GetVersionStyle(diff)
+
+	// Ensure padding
+	pPath := fmt.Sprintf("%-*s", padPath, path)
+
+	// Format vulnerability counts
+	red := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+	orange := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+	yellow := lipgloss.NewStyle().Foreground(lipgloss.Color("226"))
+	green := lipgloss.NewStyle().Foreground(lipgloss.Color("46"))
+
+	formatVulnInfo := func(info scanner.VulnInfo) string {
+		if info.Total == 0 {
+			return ""
+		}
+
+		parts := []string{}
+		if info.Low > 0 {
+			parts = append(parts, fmt.Sprintf("L (%d)", info.Low))
+		}
+		if info.Medium > 0 {
+			parts = append(parts, yellow.Render(fmt.Sprintf("M (%d)", info.Medium)))
+		}
+		if info.High > 0 {
+			parts = append(parts, orange.Render(fmt.Sprintf("H (%d)", info.High)))
+		}
+		if info.Critical > 0 {
+			parts = append(parts, red.Render(fmt.Sprintf("C (%d)", info.Critical)))
+		}
+
+		if len(parts) == 0 {
+			return ""
+		}
+
+		result := " ["
+		for i, part := range parts {
+			if i > 0 {
+				result += ", "
+			}
+			result += part
+		}
+		result += "]"
+		return result
+	}
+
+	// Build the line
+	line := fmt.Sprintf("%s  %s", ColorPath.Render(pPath), vOld)
+
+	// Add current version vulnerabilities
+	if showVulns && vulnCurrent.Total > 0 {
+		line += formatVulnInfo(vulnCurrent)
+	}
+
+	line += "  " + ColorArrow.Render("→") + "  " + targetStyle.Render(vNew)
+
+	// Add update version vulnerabilities or fixed indicator
+	if showVulns && vulnCurrent.Total > 0 {
+		fixed := vulnCurrent.Total - vulnUpdate.Total
+
+		if fixed > 0 {
+			// Vulnerabilities were fixed
+			if vulnUpdate.Total == 0 {
+				line += " " + green.Render(fmt.Sprintf("✓ (fixes %d)", fixed))
+			} else {
+				line += formatVulnInfo(vulnUpdate) + " " + green.Render(fmt.Sprintf("(fixes %d)", fixed))
+			}
+		} else if fixed < 0 {
+			// More vulnerabilities in update
+			line += formatVulnInfo(vulnUpdate) + " " + red.Render(fmt.Sprintf("(+%d)", -fixed))
+		} else if vulnUpdate.Total > 0 {
+			// Same count but might be different types
+			line += formatVulnInfo(vulnUpdate)
+		}
+	}
+
+	return line
 }

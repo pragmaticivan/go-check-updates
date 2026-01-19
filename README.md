@@ -33,6 +33,7 @@ go build -o gcu ./cmd/gcu
 | Dry run (recommended) | `gcu` | Lists direct updates grouped by direct/indirect |
 | Upgrade everything | `gcu -u` | Applies updates, then runs `go mod tidy` |
 | Interactive picker | `gcu -i` | Use space to toggle, enter to confirm |
+| Check vulnerabilities | `gcu -v` | Shows vulnerability counts for current and updated versions |
 | Filter names | `gcu --filter charm` | Accepts substring or regex via Go's `regexp` |
 | Include transitive deps | `gcu --all` | Adds modules pulled in indirectly |
 | Skip fresh releases | `gcu --cooldown 30` | Ignores versions published in last N days |
@@ -60,6 +61,26 @@ Combine formats with commas to mix behaviors.
 1. `gcu` shells out to `go list -m -u -json` to discover available versions.
 2. When upgrading, it executes `go get module@version` for each selection.
 3. A final `go mod tidy` keeps the module graph consistent.
+
+### Vulnerability scanning
+
+When using the `-v` / `--vulnerabilities` flag, `gcu` queries the [OSV (Open Source Vulnerabilities) API](https://osv.dev) to check for known security issues in your dependencies.
+
+For each module with available updates, it:
+1. Checks the current version for vulnerabilities
+2. Checks the update version for vulnerabilities
+3. Shows a comparison with color-coded severity levels:
+   - `L (n)` - Low severity
+   - `M (n)` - Medium severity (yellow)
+   - `H (n)` - High severity (orange)
+   - `C (n)` - Critical severity (red)
+
+Example output:
+```
+gopkg.in/yaml.v3   v3.0.0  →  v3.0.1 [H (1)] → ✓ (fixes 1)
+```
+
+This indicates the current version has 1 HIGH severity vulnerability that will be fixed by upgrading.
 
 ## Development
 

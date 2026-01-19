@@ -14,12 +14,13 @@ import (
 
 var (
 	// Flags
-	upgradeFlag  bool
-	verifyFlag   bool // Interactive mode (verify/select); using -i
-	filterFlag   string
-	allFlag      bool
-	cooldownFlag int
-	formatFlag   string
+	upgradeFlag         bool
+	verifyFlag          bool // Interactive mode (verify/select); using -i
+	filterFlag          string
+	allFlag             bool
+	cooldownFlag        int
+	formatFlag          string
+	vulnerabilitiesFlag bool
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -31,12 +32,13 @@ var rootCmd = &cobra.Command{
 It allows you to list available updates, interactively select them, and upgrade your go.mod file.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		err := app.Run(app.RunOptions{
-			Upgrade:     upgradeFlag,
-			Interactive: verifyFlag,
-			Filter:      filterFlag,
-			All:         allFlag,
-			Cooldown:    cooldownFlag,
-			FormatFlag:  formatFlag,
+			Upgrade:             upgradeFlag,
+			Interactive:         verifyFlag,
+			Filter:              filterFlag,
+			All:                 allFlag,
+			Cooldown:            cooldownFlag,
+			FormatFlag:          formatFlag,
+			ShowVulnerabilities: vulnerabilitiesFlag,
 		}, app.Deps{
 			Out:            os.Stdout,
 			Now:            time.Now,
@@ -68,4 +70,5 @@ func init() {
 	rootCmd.Flags().BoolVar(&allFlag, "all", false, "Include transitive updates (not listed in go.mod)")
 	rootCmd.Flags().IntVarP(&cooldownFlag, "cooldown", "c", 0, "Minimum age (days) for an update to be considered")
 	rootCmd.Flags().StringVar(&formatFlag, "format", "", "Output format modifiers: group,lines,time (comma-delimited)")
+	rootCmd.Flags().BoolVarP(&vulnerabilitiesFlag, "vulnerabilities", "v", false, "Show vulnerability counts for current and updated versions")
 }
