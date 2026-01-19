@@ -166,3 +166,145 @@ func TestCheckModule_ConcurrentAccess(t *testing.T) {
 		t.Errorf("Concurrent CheckModule() returned error: %v", err)
 	}
 }
+
+func TestParseCVSSVector(t *testing.T) {
+	tests := []struct {
+		name     string
+		vector   string
+		expected map[string]string
+	}{
+		{
+			name:   "Standard CVSS 3.1 vector",
+			vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+			expected: map[string]string{
+				"AV": "N",
+				"AC": "L",
+				"PR": "N",
+				"UI": "N",
+				"S":  "U",
+				"C":  "H",
+				"I":  "H",
+				"A":  "H",
+			},
+		},
+		{
+			name:   "CVSS vector with different ordering",
+			vector: "CVSS:3.0/C:H/I:L/A:N/S:U/AV:N/AC:L/PR:N/UI:N",
+			expected: map[string]string{
+				"C":  "H",
+				"I":  "L",
+				"A":  "N",
+				"S":  "U",
+				"AV": "N",
+				"AC": "L",
+				"PR": "N",
+				"UI": "N",
+			},
+		},
+		{
+			name:   "CVSS vector with scope changed",
+			vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:L",
+			expected: map[string]string{
+				"AV": "N",
+				"AC": "L",
+				"PR": "N",
+				"UI": "R",
+				"S":  "C",
+				"C":  "L",
+				"I":  "L",
+				"A":  "L",
+			},
+		},
+		{
+			name:     "Empty vector",
+			vector:   "",
+			expected: map[string]string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := vuln.ParseCVSSVector(tt.vector)
+			
+			if len(result) != len(tt.expected) {
+				t.Errorf("Expected %d metrics, got %d", len(tt.expected), len(result))
+			}
+
+			for key, expectedValue := range tt.expected {
+				if actualValue, ok := result[key]; !ok {
+					t.Errorf("Missing metric %s", key)
+				} else if actualValue != expectedValue {
+					t.Errorf("For metric %s: expected %s, got %s", key, expectedValue, actualValue)
+				}
+			}
+		})
+	}
+}
+
+func TestExtractSeverityFromCVSS(t *testing.T) {
+	tests := []struct {
+		name     string
+		cvss     string
+		expected string
+	}{
+		{
+			name:     "Critical: multiple high impacts",
+			cvss:     "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+			expected: "CRITICAL",
+		},
+		{
+			name:     "Critical: high impact with scope change",
+			cvss:     "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:H/I:L/A:L",
+			expected: "CRITICAL",
+		},
+		{
+			name:     "High: single high impact",
+			cvss:     "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+			expected: "HIGH",
+		},
+		{
+			name:     "High: availability high",
+			cvss:     "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+			expected: "HIGH",
+		},
+		{
+			name:     "Medium: medium impacts",
+			cvss:     "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:M/I:N/A:N",
+			expected: "MEDIUM",
+		},
+		{
+			name:     "Low: low impacts",
+			cvss:     "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
+			expected: "LOW",
+		},
+		{
+			name:     "Medium: no impacts (default)",
+			cvss:     "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N",
+			expected: "MEDIUM",
+		},
+		{
+			name:     "Medium: empty string",
+			cvss:     "",
+			expected: "MEDIUM",
+		},
+		{
+			name:     "Different ordering still works",
+			cvss:     "CVSS:3.0/C:H/I:H/A:L/S:U/AV:N/AC:L/PR:N/UI:N",
+			expected: "CRITICAL",
+		},
+		{
+			name:     "Medium: mixed low and medium",
+			cvss:     "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:L/I:M/A:N",
+			expected: "MEDIUM",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := vuln.ExtractSeverityFromCVSS(tt.cvss)
+			if result != tt.expected {
+				t.Errorf("Expected %s, got %s for CVSS: %s", tt.expected, result, tt.cvss)
+			}
+		})
+	}
+}

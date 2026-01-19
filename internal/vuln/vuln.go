@@ -120,7 +120,7 @@ func (c *RealClient) CheckModule(ctx context.Context, modulePath, version string
 		severity := strings.ToUpper(vuln.DatabaseSpecific.Severity)
 		if severity == "" && len(vuln.Severity) > 0 {
 			// Try to extract severity from CVSS score
-			severity = extractSeverityFromCVSS(vuln.Severity[0].Score)
+			severity = ExtractSeverityFromCVSS(vuln.Severity[0].Score)
 		}
 
 		switch severity {
@@ -145,26 +145,38 @@ func (c *RealClient) CheckModule(ctx context.Context, modulePath, version string
 	return counts, nil
 }
 
-// extractSeverityFromCVSS extracts severity level from CVSS score string
-func extractSeverityFromCVSS(cvssScore string) string {
-	// CVSS format: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
-	// Base score ranges: 0.0-3.9=LOW, 4.0-6.9=MEDIUM, 7.0-8.9=HIGH, 9.0-10.0=CRITICAL
+// ExtractSeverityFromCVSS extracts severity level from CVSS score string
+// Parses CVSS vector strings like "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+// Returns severity based on impact metrics (C=Confidentiality, I=Integrity, A=Availability)
+func ExtractSeverityFromCVSS(cvssScore string) string {
+	if cvssScore == "" {
+		return "MEDIUM"
+	}
+
+	// Parse CVSS vector into a map of metrics
+	metrics := ParseCVSSVector(cvssScore)
+
+	// Extract impact metrics
+	confidentiality := metrics["C"]
+	integrity := metrics["I"]
+	availability := metrics["A"]
+	scope := metrics["S"]
 
 	// Count high-impact metrics (Confidentiality, Integrity, Availability)
 	highImpacts := 0
-	if strings.Contains(cvssScore, "/C:H") {
+	if confidentiality == "H" {
 		highImpacts++
 	}
-	if strings.Contains(cvssScore, "/I:H") {
+	if integrity == "H" {
 		highImpacts++
 	}
-	if strings.Contains(cvssScore, "/A:H") {
+	if availability == "H" {
 		highImpacts++
 	}
 
 	// Multiple high impacts often indicate critical severity
 	// Also check for scope change which can elevate severity
-	if highImpacts >= 2 || (highImpacts >= 1 && strings.Contains(cvssScore, "/S:C")) {
+	if highImpacts >= 2 || (highImpacts >= 1 && scope == "C") {
 		return "CRITICAL"
 	}
 
@@ -173,14 +185,42 @@ func extractSeverityFromCVSS(cvssScore string) string {
 	}
 
 	// Check for medium impacts
-	if strings.Contains(cvssScore, "/C:M") || strings.Contains(cvssScore, "/I:M") || strings.Contains(cvssScore, "/A:M") {
+	if confidentiality == "M" || integrity == "M" || availability == "M" {
 		return "MEDIUM"
 	}
 
 	// Check for low impacts
-	if strings.Contains(cvssScore, "/C:L") || strings.Contains(cvssScore, "/I:L") || strings.Contains(cvssScore, "/A:L") {
+	if confidentiality == "L" || integrity == "L" || availability == "L" {
 		return "LOW"
 	}
 
 	return "MEDIUM"
+}
+
+// ParseCVSSVector parses a CVSS vector string into a map of metric:value pairs
+// Example: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H" -> {"AV":"N", "AC":"L", ...}
+func ParseCVSSVector(vector string) map[string]string {
+	metrics := make(map[string]string)
+
+	// Split by slash to get individual metrics
+	parts := strings.Split(vector, "/")
+
+	// Skip the first part if it starts with "CVSS:" (version indicator)
+	startIdx := 0
+	if len(parts) > 0 && strings.HasPrefix(parts[0], "CVSS:") {
+		startIdx = 1
+	}
+
+	// Parse each metric:value pair
+	for i := startIdx; i < len(parts); i++ {
+		// Split by colon to separate metric from value
+		pair := strings.SplitN(parts[i], ":", 2)
+		if len(pair) == 2 {
+			metric := strings.TrimSpace(pair[0])
+			value := strings.TrimSpace(pair[1])
+			metrics[metric] = value
+		}
+	}
+
+	return metrics
 }
