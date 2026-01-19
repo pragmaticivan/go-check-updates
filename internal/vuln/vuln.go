@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 )
 
 // SeverityCounts holds vulnerability counts by severity level
@@ -34,8 +35,10 @@ type RealClient struct {
 // NewClient creates a new vulnerability client
 func NewClient() Client {
 	return &RealClient{
-		cache:      make(map[string]SeverityCounts),
-		httpClient: &http.Client{},
+		cache: make(map[string]SeverityCounts),
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
 	}
 }
 
