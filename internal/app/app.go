@@ -33,6 +33,152 @@ type Deps struct {
 	StartInteractive func(direct, indirect, transitive []scanner.Module, opts tui.Options)
 }
 
+// checkVulnerabilities checks for vulnerabilities in current and update versions
+func checkVulnerabilities(ctx context.Context, modules []scanner.Module, vulnClient vuln.Client) {
+	for i := range modules {
+		if modules[i].Update != nil {
+			// Check current version
+			if currentCounts, err := vulnClient.CheckModule(ctx, modules[i].Path, modules[i].Version); err == nil {
+				modules[i].VulnCurrent = scanner.VulnInfo{
+					Low:      currentCounts.Low,
+					Medium:   currentCounts.Medium,
+					High:     currentCounts.High,
+					Critical: currentCounts.Critical,
+					Total:    currentCounts.Total,
+				}
+			}
+
+			// Check update version
+			if updateCounts, err := vulnClient.CheckModule(ctx, modules[i].Path, modules[i].Update.Version); err == nil {
+				modules[i].VulnUpdate = scanner.VulnInfo{
+					Low:      updateCounts.Low,
+					Medium:   updateCounts.Medium,
+					High:     updateCounts.High,
+					Critical: updateCounts.Critical,
+					Total:    updateCounts.Total,
+				}
+			}
+		}
+	}
+}
+
+// groupModules splits modules into direct, indirect, and transitive categories
+func groupModules(modules []scanner.Module) (direct, indirect, transitive []scanner.Module) {
+	for _, m := range modules {
+		if m.FromGoMod {
+			if m.Indirect {
+				indirect = append(indirect, m)
+			} else {
+				direct = append(direct, m)
+			}
+		} else {
+			transitive = append(transitive, m)
+		}
+	}
+	return direct, indirect, transitive
+}
+
+// printLinesFormat outputs modules in simple line format (path@version)
+func printLinesFormat(out io.Writer, direct, indirect, transitive []scanner.Module, includeAll bool) {
+	all := make([]scanner.Module, 0, len(direct)+len(indirect)+len(transitive))
+	all = append(all, direct...)
+	all = append(all, indirect...)
+	if includeAll {
+		all = append(all, transitive...)
+	}
+	for _, m := range all {
+		if m.Update == nil {
+			continue
+		}
+		_, _ = fmt.Fprintf(out, "%s@%s\n", m.Path, m.Update.Version)
+	}
+}
+
+// printGroupedOutput prints modules organized by group labels
+func printGroupedOutput(out io.Writer, group []scanner.Module, maxPathLen int, showVulns bool, showTime bool, now time.Time) {
+	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+
+	byLabel := make(map[string][]scanner.Module)
+	order := make(map[string]int)
+	for _, m := range group {
+		label := format.GroupLabel(m)
+		byLabel[label] = append(byLabel[label], m)
+		if _, ok := order[label]; !ok {
+			order[label] = format.GroupSortKey(m)
+		}
+	}
+	labels := make([]string, 0, len(byLabel))
+	for k := range byLabel {
+		labels = append(labels, k)
+	}
+	sort.Slice(labels, func(i, j int) bool {
+		if order[labels[i]] != order[labels[j]] {
+			return order[labels[i]] < order[labels[j]]
+		}
+		return labels[i] < labels[j]
+	})
+
+	for _, label := range labels {
+		_, _ = fmt.Fprintf(out, "\n%s\n", dim.Render(label))
+		for _, m := range byLabel[label] {
+			line := " " + style.FormatUpdate(m.Path, m.Version, m.Update.Version, maxPathLen)
+			if showVulns && m.VulnCurrent.Total > 0 {
+				line += " " + formatVulnCounts(m.VulnCurrent, m.VulnUpdate)
+			}
+			if showTime {
+				pt := format.PublishTime(m.Update.Time, now)
+				if pt != "" {
+					line += "  " + dim.Render(pt)
+				}
+			}
+			_, _ = fmt.Fprintln(out, line)
+		}
+	}
+}
+
+// printSimpleOutput prints modules in simple list format
+func printSimpleOutput(out io.Writer, group []scanner.Module, maxPathLen int, showVulns bool, showTime bool, now time.Time) {
+	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+
+	for _, m := range group {
+		line := " " + style.FormatUpdateWithVulns(m.Path, m.Version, m.Update.Version, maxPathLen, m.VulnCurrent, m.VulnUpdate, showVulns)
+		if showTime {
+			pt := format.PublishTime(m.Update.Time, now)
+			if pt != "" {
+				line += "  " + dim.Render(pt)
+			}
+		}
+		_, _ = fmt.Fprintln(out, line)
+	}
+}
+
+// printGroup outputs a titled group of modules
+func printGroup(out io.Writer, title string, group []scanner.Module, maxPathLen int, grouped bool, showVulns bool, showTime bool, now time.Time) {
+	if len(group) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintf(out, "\n%s\n", title)
+
+	if grouped {
+		printGroupedOutput(out, group, maxPathLen, showVulns, showTime, now)
+	} else {
+		printSimpleOutput(out, group, maxPathLen, showVulns, showTime, now)
+	}
+}
+
+// calculateMaxPathLen finds the longest module path for alignment
+func calculateMaxPathLen(direct, indirect, transitive []scanner.Module) int {
+	maxPathLen := 0
+	for _, group := range [][]scanner.Module{direct, indirect, transitive} {
+		for _, m := range group {
+			if len(m.Path) > maxPathLen {
+				maxPathLen = len(m.Path)
+			}
+		}
+	}
+	return maxPathLen
+}
+
 func Run(opts RunOptions, deps Deps) error {
 	if deps.Out == nil {
 		return fmt.Errorf("missing deps.Out")
@@ -76,46 +222,10 @@ func Run(opts RunOptions, deps Deps) error {
 		}
 		vulnClient := vuln.NewClient()
 		ctx := context.Background()
-
-		for i := range modules {
-			if modules[i].Update != nil {
-				// Check current version
-				if currentCounts, err := vulnClient.CheckModule(ctx, modules[i].Path, modules[i].Version); err == nil {
-					modules[i].VulnCurrent = scanner.VulnInfo{
-						Low:      currentCounts.Low,
-						Medium:   currentCounts.Medium,
-						High:     currentCounts.High,
-						Critical: currentCounts.Critical,
-						Total:    currentCounts.Total,
-					}
-				}
-
-				// Check update version
-				if updateCounts, err := vulnClient.CheckModule(ctx, modules[i].Path, modules[i].Update.Version); err == nil {
-					modules[i].VulnUpdate = scanner.VulnInfo{
-						Low:      updateCounts.Low,
-						Medium:   updateCounts.Medium,
-						High:     updateCounts.High,
-						Critical: updateCounts.Critical,
-						Total:    updateCounts.Total,
-					}
-				}
-			}
-		}
+		checkVulnerabilities(ctx, modules, vulnClient)
 	}
 
-	var direct, indirect, transitive []scanner.Module
-	for _, m := range modules {
-		if m.FromGoMod {
-			if m.Indirect {
-				indirect = append(indirect, m)
-			} else {
-				direct = append(direct, m)
-			}
-		} else {
-			transitive = append(transitive, m)
-		}
-	}
+	direct, indirect, transitive := groupModules(modules)
 
 	if opts.Interactive {
 		if deps.StartInteractive == nil {
@@ -129,95 +239,19 @@ func Run(opts RunOptions, deps Deps) error {
 	}
 
 	if formats.Lines {
-		all := make([]scanner.Module, 0, len(direct)+len(indirect)+len(transitive))
-		all = append(all, direct...)
-		all = append(all, indirect...)
-		if opts.All {
-			all = append(all, transitive...)
-		}
-		for _, m := range all {
-			if m.Update == nil {
-				continue
-			}
-			_, _ = fmt.Fprintf(deps.Out, "%s@%s\n", m.Path, m.Update.Version)
-		}
+		printLinesFormat(deps.Out, direct, indirect, transitive, opts.All)
 		return nil
 	}
 
 	_, _ = fmt.Fprintln(deps.Out, "\nAvailable updates:")
 
-	maxPathLen := 0
-	for _, group := range [][]scanner.Module{direct, indirect, transitive} {
-		for _, m := range group {
-			if len(m.Path) > maxPathLen {
-				maxPathLen = len(m.Path)
-			}
-		}
-	}
+	maxPathLen := calculateMaxPathLen(direct, indirect, transitive)
+	now := deps.Now()
 
-	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	printGroup := func(title string, group []scanner.Module) {
-		if len(group) == 0 {
-			return
-		}
-		_, _ = fmt.Fprintf(deps.Out, "\n%s\n", title)
-
-		if formats.Group {
-			byLabel := make(map[string][]scanner.Module)
-			order := make(map[string]int)
-			for _, m := range group {
-				label := format.GroupLabel(m)
-				byLabel[label] = append(byLabel[label], m)
-				if _, ok := order[label]; !ok {
-					order[label] = format.GroupSortKey(m)
-				}
-			}
-			labels := make([]string, 0, len(byLabel))
-			for k := range byLabel {
-				labels = append(labels, k)
-			}
-			sort.Slice(labels, func(i, j int) bool {
-				if order[labels[i]] != order[labels[j]] {
-					return order[labels[i]] < order[labels[j]]
-				}
-				return labels[i] < labels[j]
-			})
-
-			for _, label := range labels {
-				_, _ = fmt.Fprintf(deps.Out, "\n%s\n", dim.Render(label))
-				for _, m := range byLabel[label] {
-					line := " " + style.FormatUpdate(m.Path, m.Version, m.Update.Version, maxPathLen)
-					if opts.ShowVulnerabilities && m.VulnCurrent.Total > 0 {
-						line += " " + formatVulnCounts(m.VulnCurrent, m.VulnUpdate)
-					}
-					if formats.Time {
-						pt := format.PublishTime(m.Update.Time, deps.Now())
-						if pt != "" {
-							line += "  " + dim.Render(pt)
-						}
-					}
-					_, _ = fmt.Fprintln(deps.Out, line)
-				}
-			}
-			return
-		}
-
-		for _, m := range group {
-			line := " " + style.FormatUpdateWithVulns(m.Path, m.Version, m.Update.Version, maxPathLen, m.VulnCurrent, m.VulnUpdate, opts.ShowVulnerabilities)
-			if formats.Time {
-				pt := format.PublishTime(m.Update.Time, deps.Now())
-				if pt != "" {
-					line += "  " + dim.Render(pt)
-				}
-			}
-			_, _ = fmt.Fprintln(deps.Out, line)
-		}
-	}
-
-	printGroup("Direct dependencies (go.mod)", direct)
-	printGroup("Indirect dependencies (go.mod // indirect)", indirect)
+	printGroup(deps.Out, "Direct dependencies (go.mod)", direct, maxPathLen, formats.Group, opts.ShowVulnerabilities, formats.Time, now)
+	printGroup(deps.Out, "Indirect dependencies (go.mod // indirect)", indirect, maxPathLen, formats.Group, opts.ShowVulnerabilities, formats.Time, now)
 	if opts.All {
-		printGroup("Transitive (not in go.mod)", transitive)
+		printGroup(deps.Out, "Transitive (not in go.mod)", transitive, maxPathLen, formats.Group, opts.ShowVulnerabilities, formats.Time, now)
 	}
 
 	packagesToUpdate := make([]scanner.Module, 0, len(direct)+len(indirect)+len(transitive))
