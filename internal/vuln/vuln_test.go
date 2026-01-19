@@ -133,3 +133,36 @@ func TestSeverityCountsStructure(t *testing.T) {
 		t.Errorf("Expected Total = 10, got %d", counts.Total)
 	}
 }
+
+func TestCheckModule_ConcurrentAccess(t *testing.T) {
+	client := vuln.NewClient()
+	ctx := context.Background()
+
+	// Test concurrent access to the same module
+	const numGoroutines = 100
+	done := make(chan bool, numGoroutines)
+	errors := make(chan error, numGoroutines)
+
+	for i := 0; i < numGoroutines; i++ {
+		go func(id int) {
+			modulePath := "example.com/test"
+			version := "v1.0.0"
+
+			_, err := client.CheckModule(ctx, modulePath, version)
+			if err != nil {
+				errors <- err
+			}
+			done <- true
+		}(i)
+	}
+
+	// Wait for all goroutines to complete
+	for i := 0; i < numGoroutines; i++ {
+		<-done
+	}
+
+	close(errors)
+	for err := range errors {
+		t.Errorf("Concurrent CheckModule() returned error: %v", err)
+	}
+}

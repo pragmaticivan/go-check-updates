@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 // SeverityCounts holds vulnerability counts by severity level
@@ -26,6 +27,7 @@ type Client interface {
 // RealClient implements Client using OSV API
 type RealClient struct {
 	cache      map[string]SeverityCounts
+	cacheMu    sync.RWMutex
 	httpClient *http.Client
 }
 
@@ -66,9 +68,12 @@ func (c *RealClient) CheckModule(ctx context.Context, modulePath, version string
 	cacheKey := fmt.Sprintf("%s@%s", modulePath, version)
 
 	// Check cache first
+	c.cacheMu.RLock()
 	if counts, ok := c.cache[cacheKey]; ok {
+		c.cacheMu.RUnlock()
 		return counts, nil
 	}
+	c.cacheMu.RUnlock()
 
 	counts := SeverityCounts{}
 
@@ -130,7 +135,10 @@ func (c *RealClient) CheckModule(ctx context.Context, modulePath, version string
 	}
 
 	// Cache the result
+	c.cacheMu.Lock()
 	c.cache[cacheKey] = counts
+	c.cacheMu.Unlock()
+
 	return counts, nil
 }
 
