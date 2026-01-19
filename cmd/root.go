@@ -31,23 +31,26 @@ var rootCmd = &cobra.Command{
 
 It allows you to list available updates, interactively select them, and upgrade your go.mod file.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		err := app.Run(app.RunOptions{
-			Upgrade:             upgradeFlag,
-			Interactive:         verifyFlag,
-			Filter:              filterFlag,
-			All:                 allFlag,
-			Cooldown:            cooldownFlag,
-			FormatFlag:          formatFlag,
-			ShowVulnerabilities: vulnerabilitiesFlag,
-		}, app.Deps{
-			Out:            os.Stdout,
-			Now:            time.Now,
-			GetUpdates:     scanner.GetUpdates,
-			UpdatePackages: updater.UpdatePackages,
-			StartInteractive: func(direct, indirect, transitive []scanner.Module, opts tui.Options) {
-				tui.StartInteractiveGroupedWithOptions(direct, indirect, transitive, opts)
+		err := app.Run(
+			app.RunOptions{
+				Upgrade:             upgradeFlag,
+				Interactive:         verifyFlag,
+				Filter:              filterFlag,
+				All:                 allFlag,
+				Cooldown:            cooldownFlag,
+				FormatFlag:          formatFlag,
+				ShowVulnerabilities: vulnerabilitiesFlag,
 			},
-		})
+			app.Deps{
+				Out:            os.Stdout,
+				Now:            time.Now,
+				GetUpdates:     scanner.GetUpdates,
+				UpdatePackages: updater.UpdatePackages,
+				StartInteractive: func(direct, indirect, transitive []scanner.Module, opts tui.Options) {
+					tui.StartInteractiveGroupedWithOptions(direct, indirect, transitive, opts)
+				},
+			},
+		)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			os.Exit(1)

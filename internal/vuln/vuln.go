@@ -80,34 +80,29 @@ func (c *RealClient) CheckModule(ctx context.Context, modulePath, version string
 
 	jsonData, err := json.Marshal(query)
 	if err != nil {
-		c.cache[cacheKey] = counts
-		return counts, nil
+		return counts, fmt.Errorf("failed to marshal query: %w", err)
 	}
 
 	// Query OSV API
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.osv.dev/v1/query", bytes.NewBuffer(jsonData))
 	if err != nil {
-		c.cache[cacheKey] = counts
-		return counts, nil
+		return counts, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		c.cache[cacheKey] = counts
-		return counts, nil
+		return counts, fmt.Errorf("failed to query OSV API: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		c.cache[cacheKey] = counts
-		return counts, nil
+		return counts, fmt.Errorf("OSV API returned status %d", resp.StatusCode)
 	}
 
 	var osvResp osvResponse
 	if err := json.NewDecoder(resp.Body).Decode(&osvResp); err != nil {
-		c.cache[cacheKey] = counts
-		return counts, nil
+		return counts, fmt.Errorf("failed to decode OSV response: %w", err)
 	}
 
 	// Count vulnerabilities by severity

@@ -101,10 +101,10 @@ func TestCheckModule_WithContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	// Should still work since stub implementation doesn't use context
+	// Should return an error when context is cancelled
 	_, err := client.CheckModule(ctx, "example.com/test", "v1.0.0")
-	if err != nil {
-		t.Fatalf("CheckModule() with cancelled context returned error: %v", err)
+	if err == nil {
+		t.Fatal("CheckModule() with cancelled context should return error")
 	}
 }
 
