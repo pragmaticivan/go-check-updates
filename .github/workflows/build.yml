@@ -48,7 +48,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.3.4
+          version: v2.8.0
   build:
     needs: [dependency-review, scan-source]
     strategy:
