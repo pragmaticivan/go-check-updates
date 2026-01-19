@@ -97,7 +97,7 @@ func (c *RealClient) CheckModule(ctx context.Context, modulePath, version string
 		c.cache[cacheKey] = counts
 		return counts, nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		c.cache[cacheKey] = counts

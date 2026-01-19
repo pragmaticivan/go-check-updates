@@ -166,7 +166,7 @@ func (m model) View() string {
 		}
 
 		// Checkbox
-		checked := "◯"
+		var checked string
 		if _, ok := m.selected[i]; ok {
 			checked = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Render("◉")
 		} else {

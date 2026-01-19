@@ -71,7 +71,7 @@ func parseRequireLine(dst RequireIndex, line string) {
 	indirect := strings.Contains(comment, "indirect")
 
 	if existingIndirect, ok := dst[path]; ok {
-		if existingIndirect == false {
+		if !existingIndirect {
 			// already direct; keep direct
 			dst[path] = false
 			return

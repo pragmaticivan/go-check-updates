@@ -1,0 +1,68 @@
+name: build
+
+on:
+  push:
+    tags:
+      - v*
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  scan-source:
+    name: scan-source
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: anchore/scan-action@62b74fb7bb810d2c45b1865f47a77655621862a5 # v7.2.3
+        id: scan
+        with:
+          path: "."
+          fail-build: true
+      - uses: github/codeql-action/upload-sarif@cdefb33c0f6224e58673d9004f47f7cb3e328b89 # v4.31.10
+        with:
+          sarif_file: ${{ steps.scan.outputs.sarif }}
+  dependency-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: actions/dependency-review-action@3c4e3dcb1aa7874d2c16be7d79418e9b7efd6261 # v4.8.2
+        with:
+          config-file: ./.github/dependency-review.yml
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    needs: [dependency-review, scan-source]
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: 'go.mod'
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.3.4
+  build:
+    needs: [dependency-review, scan-source]
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version: stable
+      - uses: go-task/setup-task@0ab1b2a65bc55236a3bc64cde78f80e20e8885c2 # v1.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - run: task ci
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -50,7 +50,7 @@ func Run(opts RunOptions, deps Deps) error {
 	}
 
 	if !formats.Lines {
-		fmt.Fprintln(deps.Out, "Checking for updates...")
+		_, _ = fmt.Fprintln(deps.Out, "Checking for updates...")
 	}
 
 	modules, err := deps.GetUpdates(scanner.Options{
@@ -64,7 +64,7 @@ func Run(opts RunOptions, deps Deps) error {
 
 	if len(modules) == 0 {
 		if !formats.Lines {
-			fmt.Fprintln(deps.Out, "All dependencies match the latest package versions :)")
+			_, _ = fmt.Fprintln(deps.Out, "All dependencies match the latest package versions :)")
 		}
 		return nil
 	}
@@ -72,7 +72,7 @@ func Run(opts RunOptions, deps Deps) error {
 	// Check vulnerabilities if requested
 	if opts.ShowVulnerabilities {
 		if !formats.Lines {
-			fmt.Fprintln(deps.Out, "Checking vulnerabilities...")
+			_, _ = fmt.Fprintln(deps.Out, "Checking vulnerabilities...")
 		}
 		vulnClient := vuln.NewClient()
 		ctx := context.Background()
@@ -139,12 +139,12 @@ func Run(opts RunOptions, deps Deps) error {
 			if m.Update == nil {
 				continue
 			}
-			fmt.Fprintf(deps.Out, "%s@%s\n", m.Path, m.Update.Version)
+			_, _ = fmt.Fprintf(deps.Out, "%s@%s\n", m.Path, m.Update.Version)
 		}
 		return nil
 	}
 
-	fmt.Fprintln(deps.Out, "\nAvailable updates:")
+	_, _ = fmt.Fprintln(deps.Out, "\nAvailable updates:")
 
 	maxPathLen := 0
 	for _, group := range [][]scanner.Module{direct, indirect, transitive} {
@@ -160,7 +160,7 @@ func Run(opts RunOptions, deps Deps) error {
 		if len(group) == 0 {
 			return
 		}
-		fmt.Fprintf(deps.Out, "\n%s\n", title)
+		_, _ = fmt.Fprintf(deps.Out, "\n%s\n", title)
 
 		if formats.Group {
 			byLabel := make(map[string][]scanner.Module)
@@ -184,7 +184,7 @@ func Run(opts RunOptions, deps Deps) error {
 			})
 
 			for _, label := range labels {
-				fmt.Fprintf(deps.Out, "\n%s\n", dim.Render(label))
+				_, _ = fmt.Fprintf(deps.Out, "\n%s\n", dim.Render(label))
 				for _, m := range byLabel[label] {
 					line := " " + style.FormatUpdate(m.Path, m.Version, m.Update.Version, maxPathLen)
 					if opts.ShowVulnerabilities && m.VulnCurrent.Total > 0 {
@@ -196,7 +196,7 @@ func Run(opts RunOptions, deps Deps) error {
 							line += "  " + dim.Render(pt)
 						}
 					}
-					fmt.Fprintln(deps.Out, line)
+					_, _ = fmt.Fprintln(deps.Out, line)
 				}
 			}
 			return
@@ -210,7 +210,7 @@ func Run(opts RunOptions, deps Deps) error {
 					line += "  " + dim.Render(pt)
 				}
 			}
-			fmt.Fprintln(deps.Out, line)
+			_, _ = fmt.Fprintln(deps.Out, line)
 		}
 	}
 
@@ -231,15 +231,15 @@ func Run(opts RunOptions, deps Deps) error {
 		if deps.UpdatePackages == nil {
 			return fmt.Errorf("missing deps.UpdatePackages")
 		}
-		fmt.Fprintln(deps.Out, "\nUpgrading...")
+		_, _ = fmt.Fprintln(deps.Out, "\nUpgrading...")
 		if err := deps.UpdatePackages(packagesToUpdate); err != nil {
 			return err
 		}
-		fmt.Fprintln(deps.Out, "Done.")
+		_, _ = fmt.Fprintln(deps.Out, "Done.")
 		return nil
 	}
 
-	fmt.Fprintln(deps.Out, "\nRun with -u to upgrade, or -i for interactive mode.")
+	_, _ = fmt.Fprintln(deps.Out, "\nRun with -u to upgrade, or -i for interactive mode.")
 	return nil
 }
 

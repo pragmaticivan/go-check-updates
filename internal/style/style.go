@@ -77,9 +77,7 @@ func parseSemverCore(v string) (major, minor, patch int, ok bool) {
 	if v == "" {
 		return 0, 0, 0, false
 	}
-	if strings.HasPrefix(v, "v") {
-		v = v[1:]
-	}
+	v = strings.TrimPrefix(v, "v")
 	if i := strings.IndexAny(v, "-+"); i >= 0 {
 		v = v[:i]
 	}
