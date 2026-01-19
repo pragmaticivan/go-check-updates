@@ -246,51 +246,15 @@ func Run(opts RunOptions, deps Deps) error {
 // formatVulnCounts creates a compact string showing vulnerability transitions
 // e.g., "[L (1), M (2), H (2)] → [L (0)]" or just "[L (1), M (2)]" if no update info
 func formatVulnCounts(current, update scanner.VulnInfo) string {
-	red := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
-	orange := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
-	yellow := lipgloss.NewStyle().Foreground(lipgloss.Color("226"))
 	green := lipgloss.NewStyle().Foreground(lipgloss.Color("46"))
+	red := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 
-	formatOne := func(info scanner.VulnInfo) string {
-		if info.Total == 0 {
-			return ""
-		}
-
-		parts := []string{}
-		if info.Low > 0 {
-			parts = append(parts, fmt.Sprintf("L (%d)", info.Low))
-		}
-		if info.Medium > 0 {
-			parts = append(parts, yellow.Render(fmt.Sprintf("M (%d)", info.Medium)))
-		}
-		if info.High > 0 {
-			parts = append(parts, orange.Render(fmt.Sprintf("H (%d)", info.High)))
-		}
-		if info.Critical > 0 {
-			parts = append(parts, red.Render(fmt.Sprintf("C (%d)", info.Critical)))
-		}
-
-		if len(parts) == 0 {
-			return ""
-		}
-
-		result := "["
-		for i, part := range parts {
-			if i > 0 {
-				result += ", "
-			}
-			result += part
-		}
-		result += "]"
-		return result
-	}
-
-	currentStr := formatOne(current)
+	currentStr := style.FormatVulnInfo(current)
 	if currentStr == "" {
 		return ""
 	}
 
-	updateStr := formatOne(update)
+	updateStr := style.FormatVulnInfo(update)
 
 	// Show transition with arrow
 	fixed := current.Total - update.Total

@@ -144,6 +144,47 @@ func FormatUpdate(path, vOld, vNew string, padPath int) string {
 	)
 }
 
+// FormatVulnInfo formats vulnerability information as a colored string
+// Returns "[L (1), M (2), H (1), C (1)]" with appropriate colors
+// Returns empty string if no vulnerabilities
+func FormatVulnInfo(info scanner.VulnInfo) string {
+	if info.Total == 0 {
+		return ""
+	}
+
+	red := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+	orange := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+	yellow := lipgloss.NewStyle().Foreground(lipgloss.Color("226"))
+
+	parts := []string{}
+	if info.Low > 0 {
+		parts = append(parts, fmt.Sprintf("L (%d)", info.Low))
+	}
+	if info.Medium > 0 {
+		parts = append(parts, yellow.Render(fmt.Sprintf("M (%d)", info.Medium)))
+	}
+	if info.High > 0 {
+		parts = append(parts, orange.Render(fmt.Sprintf("H (%d)", info.High)))
+	}
+	if info.Critical > 0 {
+		parts = append(parts, red.Render(fmt.Sprintf("C (%d)", info.Critical)))
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+
+	result := "["
+	for i, part := range parts {
+		if i > 0 {
+			result += ", "
+		}
+		result += part
+	}
+	result += "]"
+	return result
+}
+
 // FormatUpdateWithVulns formats a module update line with vulnerability information
 func FormatUpdateWithVulns(path, vOld, vNew string, padPath int, vulnCurrent, vulnUpdate scanner.VulnInfo, showVulns bool) string {
 	diff := GetDiffType(vOld, vNew)
@@ -152,52 +193,19 @@ func FormatUpdateWithVulns(path, vOld, vNew string, padPath int, vulnCurrent, vu
 	// Ensure padding
 	pPath := fmt.Sprintf("%-*s", padPath, path)
 
-	// Format vulnerability counts
-	red := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
-	orange := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
-	yellow := lipgloss.NewStyle().Foreground(lipgloss.Color("226"))
+	// Color for fixed vulnerabilities indicator
 	green := lipgloss.NewStyle().Foreground(lipgloss.Color("46"))
-
-	formatVulnInfo := func(info scanner.VulnInfo) string {
-		if info.Total == 0 {
-			return ""
-		}
-
-		parts := []string{}
-		if info.Low > 0 {
-			parts = append(parts, fmt.Sprintf("L (%d)", info.Low))
-		}
-		if info.Medium > 0 {
-			parts = append(parts, yellow.Render(fmt.Sprintf("M (%d)", info.Medium)))
-		}
-		if info.High > 0 {
-			parts = append(parts, orange.Render(fmt.Sprintf("H (%d)", info.High)))
-		}
-		if info.Critical > 0 {
-			parts = append(parts, red.Render(fmt.Sprintf("C (%d)", info.Critical)))
-		}
-
-		if len(parts) == 0 {
-			return ""
-		}
-
-		result := " ["
-		for i, part := range parts {
-			if i > 0 {
-				result += ", "
-			}
-			result += part
-		}
-		result += "]"
-		return result
-	}
+	red := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 
 	// Build the line
 	line := fmt.Sprintf("%s  %s", ColorPath.Render(pPath), vOld)
 
 	// Add current version vulnerabilities
 	if showVulns && vulnCurrent.Total > 0 {
-		line += formatVulnInfo(vulnCurrent)
+		vulnStr := FormatVulnInfo(vulnCurrent)
+		if vulnStr != "" {
+			line += " " + vulnStr
+		}
 	}
 
 	line += "  " + ColorArrow.Render("→") + "  " + targetStyle.Render(vNew)
@@ -211,14 +219,25 @@ func FormatUpdateWithVulns(path, vOld, vNew string, padPath int, vulnCurrent, vu
 			if vulnUpdate.Total == 0 {
 				line += " " + green.Render(fmt.Sprintf("✓ (fixes %d)", fixed))
 			} else {
-				line += formatVulnInfo(vulnUpdate) + " " + green.Render(fmt.Sprintf("(fixes %d)", fixed))
+				updateVulnStr := FormatVulnInfo(vulnUpdate)
+				if updateVulnStr != "" {
+					line += " " + updateVulnStr
+				}
+				line += " " + green.Render(fmt.Sprintf("(fixes %d)", fixed))
 			}
 		} else if fixed < 0 {
 			// More vulnerabilities in update
-			line += formatVulnInfo(vulnUpdate) + " " + red.Render(fmt.Sprintf("(+%d)", -fixed))
+			updateVulnStr := FormatVulnInfo(vulnUpdate)
+			if updateVulnStr != "" {
+				line += " " + updateVulnStr
+			}
+			line += " " + red.Render(fmt.Sprintf("(+%d)", -fixed))
 		} else if vulnUpdate.Total > 0 {
 			// Same count but might be different types
-			line += formatVulnInfo(vulnUpdate)
+			updateVulnStr := FormatVulnInfo(vulnUpdate)
+			if updateVulnStr != "" {
+				line += " " + updateVulnStr
+			}
 		}
 	}
 
