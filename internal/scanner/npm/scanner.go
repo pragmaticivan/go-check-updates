@@ -8,14 +8,18 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
+	"github.com/pragmaticivan/faro/internal/cooldown"
 	"github.com/pragmaticivan/faro/internal/scanner"
 )
 
 // Scanner implements scanner.Scanner for npm.
 type Scanner struct {
-	workDir        string
-	runNpmOutdated func() ([]byte, error)
+	workDir          string
+	runNpmOutdated   func() ([]byte, error)
+	fetchPackageTime func(name, version string) (string, error)
 }
 
 // packageJSON represents the structure of package.json.
@@ -37,7 +41,7 @@ type npmPackageInfo struct {
 
 // NewScanner creates a new npm scanner.
 func NewScanner(workDir string) *Scanner {
-	return &Scanner{
+	s := &Scanner{
 		workDir: workDir,
 		runNpmOutdated: func() ([]byte, error) {
 			cmd := exec.Command("npm", "outdated", "--json")
@@ -48,6 +52,28 @@ func NewScanner(workDir string) *Scanner {
 			return out, nil
 		},
 	}
+	s.fetchPackageTime = func(name, version string) (string, error) {
+		// npm view package time --json
+		// Note: 'npm view' returns the full time map even if we ask for a specific version,
+		// so we ask for the package time map and extract the specific version.
+		cmd := exec.Command("npm", "view", name, "time", "--json")
+		cmd.Dir = workDir
+		out, err := cmd.Output()
+		if err != nil {
+			return "", err
+		}
+
+		var timeMap map[string]string
+		if err := json.Unmarshal(out, &timeMap); err != nil {
+			return "", err
+		}
+
+		if t, ok := timeMap[version]; ok {
+			return t, nil
+		}
+		return "", nil
+	}
+	return s
 }
 
 // GetUpdates returns all npm packages that have available updates.
@@ -73,8 +99,20 @@ func (s *Scanner) GetUpdates(opts scanner.Options) ([]scanner.Module, error) {
 		return nil, fmt.Errorf("failed to parse npm outdated output: %w", err)
 	}
 
-	var modules []scanner.Module
+	type candidate struct {
+		Name   string
+		Info   npmPackageInfo
+		Direct bool
+		Type   string
+	}
+	var candidates []candidate
+
 	for name, info := range outdated {
+		// If current version matches latest, it's not an update we care about
+		if info.Current == info.Latest {
+			continue
+		}
+
 		// Determine if it's a direct dependency
 		_, isDirect := pkgJSON.Dependencies[name]
 		_, isDevDirect := pkgJSON.DevDependencies[name]
@@ -100,18 +138,57 @@ func (s *Scanner) GetUpdates(opts scanner.Options) ([]scanner.Module, error) {
 			continue
 		}
 
-		module := scanner.Module{
-			Name:           name,
-			Version:        info.Current,
-			Direct:         isDirect || isDevDirect,
-			DependencyType: depType,
-			Update: &scanner.UpdateInfo{
-				Version: info.Latest,
-			},
-		}
-		modules = append(modules, module)
+		candidates = append(candidates, candidate{name, info, isDirect || isDevDirect, depType})
 	}
 
+	// Fetch update times concurrently
+	modules := make([]scanner.Module, 0, len(candidates))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 10) // Limit concurrency
+
+	for _, c := range candidates {
+		wg.Add(1)
+		go func(c candidate) {
+			defer wg.Done()
+
+			sem <- struct{}{}        // Acquire token
+			defer func() { <-sem }() // Release token
+
+			var updateTime string
+			// Only fetch time if we have a latest version
+			if c.Info.Latest != "" {
+				t, err := s.fetchPackageTime(c.Name, c.Info.Latest)
+				if err == nil {
+					updateTime = t
+				}
+			}
+
+			// Apply cooldown if requested and we have a time
+			if opts.CooldownDays > 0 && updateTime != "" {
+				if !cooldown.Eligible(updateTime, opts.CooldownDays, time.Now()) {
+					return
+				}
+			}
+
+			module := scanner.Module{
+				Name:           c.Name,
+				Version:        c.Info.Current,
+				Direct:         c.Direct,
+				DependencyType: c.Type,
+				Update: &scanner.UpdateInfo{
+					Version: c.Info.Latest,
+					Time:    updateTime,
+				},
+			}
+
+			mu.Lock()
+			modules = append(modules, module)
+			mu.Unlock()
+		}(c)
+	}
+
+	wg.Wait()
 	return modules, nil
 }
 
